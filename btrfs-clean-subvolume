@@ -1,0 +1,50 @@
+#!/bin/bash
+
+clean_subvolume() {
+    local dir="$(basename "$1")"
+    local tmpname="${dir}.$(date +%s%N)"
+
+    local cmd_btrfs_create cmd_btrfs_delete cmd_chmod cmd_chown cmd_mv
+    cmd_btrfs_create="btrfs subvolume create"
+    cmd_btrfs_delete="btrfs subvolume delete"
+    cmd_chmod="chmod"
+    cmd_chown="chown"
+    cmd_mv="mv"
+
+    if [ -n "$VERBOSE" ]; then
+        cmd_chmod+=" -v"
+        cmd_chown+=" -v"
+        cmd_mv+=" -v"
+    else
+        cmd_btrfs_create+=" >/dev/null"
+        cmd_btrfs_delete+=" >/dev/null"
+    fi
+
+    # Due to using output redirection, eval needs to be used
+    eval $cmd_btrfs_create \"$tmpname\"
+    $cmd_chmod --reference="$dir" "$tmpname"
+    $cmd_chown --reference="$dir" "$tmpname"
+
+    $cmd_mv "$dir" "${tmpname}.old"
+    $cmd_mv "$tmpname" "$dir"
+
+    if [ -z "$NOCONFIRM" ]; then
+        echo -n "$cmd_btrfs_delete \"${tmpname}.old\" ?"
+        read
+    fi
+
+    eval $cmd_btrfs_delete "${tmpname}.old"
+}
+
+while true; do
+    case "$1" in
+        -v) VERBOSE=1;;
+        -y) NOCONFIRM=1;;
+        *) break;;
+    esac
+    shift
+done
+
+for dir in "$@"; do
+    clean_subvolume "$dir"
+done
